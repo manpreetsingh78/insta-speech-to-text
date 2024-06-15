@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Reels</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .input-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .input-container input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 70%;
+        }
+
+        .input-container button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #28a745;
+            color: white;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+
+        .input-container button:hover {
+            background-color: #218838;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f8f8f8;
+        }
+
+        img {
+            max-width: 100px;
+            height: auto;
+            display: block;
+        }
+
+        .load-more-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .load-more-container button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        .load-more-container button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Instagram Reels</h1>
+        <div class="input-container">
+            <input type="text" id="username" placeholder="Enter Instagram username">
+            <button onclick="fetchReels()">Fetch Reels</button>
+        </div>
+        <table id="reels-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Thumbnail</th>
+                    <th>Caption</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="load-more-container" style="display: none;">
+            <button id="load-more" onclick="loadMoreReels()">Load More</button>
+        </div>
+    </div>
+
+    <script>
+        let page = 1;
+        const reelsTable = document.getElementById('reels-table');
+        const reelsTableBody = reelsTable.querySelector('tbody');
+        const loadMoreContainer = document.querySelector('.load-more-container');
+        let username = '';
+
+        function fetchReels() {
+            username = document.getElementById('username').value;
+            if (username) {
+                page = 1;
+                reelsTableBody.innerHTML = '';
+                loadReels();
+            }
+        }
+
+        function loadReels() {
+            fetch(`/api/reels?username=${username}&page=${page}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data); // Debug statement
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    if (data.length > 0) {
+                        data.forEach(reel => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td><img src="${reel.thumbnail}" alt="thumbnail"></td>
+                                <td>${reel.caption}</td>
+                                <td>${new Date(reel.date).toLocaleDateString()}</td>
+                            `;
+                            reelsTableBody.appendChild(row);
+                        });
+                        reelsTable.style.display = '';
+                        loadMoreContainer.style.display = data.length < 5 ? 'none' : '';
+                        page++;
+                    } else {
+                        loadMoreContainer.style.display = 'none';
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function loadMoreReels() {
+            loadReels();
+        }
+    </script>
+</body>
+</html>
