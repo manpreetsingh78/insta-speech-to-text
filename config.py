@@ -1,0 +1,6 @@
+ACCESS_TOKEN = ''
+API_V1_URL = 'https://api.hikerapi.com/v1/user/medias/chunk?user_id={}'
+API_V1_URL_2 = 'https://api.hikerapi.com/v1/user/medias/chunk?user_id={}&end_cursor={}'
+API_V2_URL = 'https://api.hikerapi.com/v2/user/medias?user_id={}&page_id={}'
+USERNAME_API_URL = 'https://api.hikerapi.com/v1/user/by/username?username={}'
+BALANCE_API_URL = 'https://api.hikerapi.com/sys/balance'

@@ -9,16 +9,18 @@
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
             margin: 0;
-            padding: 20px;
+            padding: 20px 200px;
         }
 
         .container {
-            max-width: 800px;
+            max-width: 100%;
             margin: 0 auto;
             background-color: #fff;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow-x: auto; /* Added to handle overflow */
         }
 
         h1 {
@@ -54,6 +56,33 @@
             background-color: #218838;
         }
 
+        .slider-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .slider-container input {
+            width: 70%;
+        }
+
+        .loading-container {
+            text-align: center;
+            margin: 20px 0;
+            display: none; /* Hide initially */
+        }
+
+        .loading-container img {
+            width: 50px;
+            height: 50px;
+        }
+
+        .loading-container.centered {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -82,6 +111,7 @@
         .load-more-container {
             text-align: center;
             margin-top: 20px;
+            position: relative;
         }
 
         .load-more-container button {
@@ -97,6 +127,65 @@
         .load-more-container button:hover {
             background-color: #0056b3;
         }
+
+        .load-more-container button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0,0,0);
+            background-color: rgba(0,0,0,0.4);
+            padding-top: 60px;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .transcribe-loading {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -106,12 +195,26 @@
             <input type="text" id="username" placeholder="Enter Instagram username">
             <button onclick="fetchReels()">Fetch Reels</button>
         </div>
+        <div class="slider-container">
+            <label for="play-count-slider">Play Count Range (10k - 10M):</label>
+            <input type="range" id="play-count-slider" min="10000" max="10000000" step="10000" value="10000" oninput="updatePlayCountValue(this.value)">
+            <span id="play-count-value">10000</span>
+        </div>
+        <div class="loading-container centered" id="loading-container">
+            <img src="https://i.gifer.com/ZZ5H.gif" alt="Loading...">
+        </div>
         <table id="reels-table" style="display: none;">
             <thead>
                 <tr>
                     <th>Thumbnail</th>
                     <th>Caption</th>
                     <th>Date</th>
+                    <th>Play Count</th>
+                    <th>Comment Count</th>
+                    <th>Like Count</th>
+                    <th>Reshare Count</th>
+                    <th>Video Duration</th>
+                    <th>Transcription</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -119,26 +222,84 @@
         <div class="load-more-container" style="display: none;">
             <button id="load-more" onclick="loadMoreReels()">Load More</button>
         </div>
+        <div class="loading-container" id="loading-container-below" style="display: none;">
+            <img src="https://i.gifer.com/ZZ5H.gif" alt="Loading...">
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="transcriptionModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Transcription</h2>
+            <p id="transcriptionText"></p>
+        </div>
     </div>
 
     <script>
-        let page = 1;
+        let nextPageId = null;
         const reelsTable = document.getElementById('reels-table');
         const reelsTableBody = reelsTable.querySelector('tbody');
         const loadMoreContainer = document.querySelector('.load-more-container');
+        const loadMoreButton = document.getElementById('load-more');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingContainerBelow = document.getElementById('loading-container-below');
         let username = '';
+        let playCountFilter = 10000;
+
+        function updatePlayCountValue(value) {
+            playCountFilter = value;
+            document.getElementById('play-count-value').innerText = value;
+        }
+
+        function formatPlayCount(count) {
+            if (count >= 1000000) {
+                return (count / 1000000).toFixed(2) + 'M';
+            } else if (count >= 100000) {
+                return (count / 100000).toFixed(2) + 'L';
+            } else if (count >= 1000) {
+                return (count / 1000).toFixed(2) + 'K';
+            } else {
+                return count.toString();
+            }
+        }
+
+        function showLoading(centered = false) {
+            if (centered) {
+                loadingContainer.classList.add('centered');
+                loadingContainer.style.display = 'block';
+            } else {
+                loadingContainerBelow.style.display = 'block';
+            }
+        }
+
+        function hideLoading() {
+            loadingContainer.style.display = 'none';
+            loadingContainerBelow.style.display = 'none';
+        }
+
+        function limitCaption(caption) {
+            const words = caption.split(' ');
+            return words.length > 10 ? words.slice(0, 10).join(' ') + '...' : caption;
+        }
 
         function fetchReels() {
             username = document.getElementById('username').value;
             if (username) {
-                page = 1;
+                nextPageId = null;
                 reelsTableBody.innerHTML = '';
+                showLoading(true);
                 loadReels();
             }
         }
 
         function loadReels() {
-            fetch(`/api/reels?username=${username}&page=${page}`)
+            loadMoreButton.disabled = true;
+            let url = `/api/reels?username=${username}&play_count=${playCountFilter}`;
+            if (nextPageId) {
+                url += `&page=${nextPageId}`;
+            }
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     console.log(data); // Debug statement
@@ -146,28 +307,102 @@
                         alert(data.error);
                         return;
                     }
-                    if (data.length > 0) {
-                        data.forEach(reel => {
+                    if (data.items.length > 0) {
+                        data.items.forEach(reel => {
                             const row = document.createElement('tr');
                             row.innerHTML = `
-                                <td><img src="${reel.thumbnail}" alt="thumbnail"></td>
-                                <td>${reel.caption}</td>
-                                <td>${new Date(reel.date).toLocaleDateString()}</td>
+                                <td><img src="${reel.thumbnail_url}" alt="thumbnail"></td>
+                                <td>${limitCaption(reel.caption)}</td>
+                                <td>${new Date(reel.timestamp * 1000).toLocaleDateString()}</td>
+                                <td>${formatPlayCount(reel.play_count)}</td>
+                                <td>${reel.comment_count}</td>
+                                <td>${reel.like_count}</td>
+                                <td>${reel.reshare_count}</td>
+                                <td>${reel.video_duration ? reel.video_duration.toFixed(2) + 's' : 'N/A'}</td>
+                                <td>
+                                    <button onclick="transcribeAudio(this, '${reel.original_sound_url}')">Transcribe</button>
+                                    <div class="transcribe-loading"></div>
+                                </td>
                             `;
                             reelsTableBody.appendChild(row);
                         });
                         reelsTable.style.display = '';
-                        loadMoreContainer.style.display = data.length < 5 ? 'none' : '';
-                        page++;
+                        nextPageId = data.next_page_id;
+                        loadMoreContainer.style.display = nextPageId ? '' : 'none';
                     } else {
                         loadMoreContainer.style.display = 'none';
                     }
+                    hideLoading();
+                    loadMoreButton.disabled = false;
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(error => {
+                    console.error('Error:', error);
+                    hideLoading();
+                    loadMoreButton.disabled = false;
+                });
         }
 
         function loadMoreReels() {
+            showLoading(false);
             loadReels();
+        }
+
+        function transcribeAudio(button, audioUrl) {
+            const loadingIndicator = button.nextElementSibling;
+            button.disabled = true;
+            loadingIndicator.style.display = 'inline-block';
+
+            fetch('/api/transcribe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ audio_url: audioUrl }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                button.disabled = false;
+                loadingIndicator.style.display = 'none';
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    openModal(data.transcription);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                button.disabled = false;
+                loadingIndicator.style.display = 'none';
+            });
+        }
+
+        function openModal(transcription) {
+            document.getElementById('transcriptionText').innerText = transcription;
+            const modal = document.getElementById('transcriptionModal');
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('transcriptionModal');
+            modal.style.display = 'none';
+        }
+
+        // Get the modal
+        const modal = document.getElementById('transcriptionModal');
+
+        // Get the <span> element that closes the modal
+        const span = document.getElementsByClassName('close')[0];
+
+        // When the user clicks on <span> (x), close the modal
+        span.onclick = function() {
+            closeModal();
+        }
+
+        // When the user clicks anywhere outside of the modal, close it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeModal();
+            }
         }
     </script>
 </body>
