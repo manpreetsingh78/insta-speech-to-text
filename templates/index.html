@@ -9,9 +9,11 @@
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
             margin: 0;
-            padding: 20px 200px;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-x: hidden;
         }
-
+    
         .container {
             max-width: 100%;
             margin: 0 auto;
@@ -21,26 +23,31 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             position: relative;
             overflow-x: auto; /* Added to handle overflow */
+            box-sizing: border-box;
         }
-
+    
         h1 {
             text-align: center;
+            font-size: 1.5em;
         }
-
+    
         .input-container {
             display: flex;
             justify-content: center;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
-
+    
         .input-container input {
             padding: 10px;
             font-size: 16px;
             border: 1px solid #ccc;
             border-radius: 4px;
             width: 70%;
+            max-width: 300px;
+            margin-bottom: 10px;
         }
-
+    
         .input-container button {
             padding: 10px 20px;
             font-size: 16px;
@@ -50,70 +57,74 @@
             color: white;
             margin-left: 10px;
             cursor: pointer;
+            white-space: nowrap;
         }
-
+    
         .input-container button:hover {
             background-color: #218838;
         }
-
+    
         .slider-container {
             text-align: center;
             margin: 20px 0;
         }
-
+    
         .slider-container input {
             width: 70%;
+            max-width: 300px;
         }
-
+    
         .loading-container {
             text-align: center;
             margin: 20px 0;
             display: none; /* Hide initially */
         }
-
+    
         .loading-container img {
             width: 50px;
             height: 50px;
         }
-
+    
         .loading-container.centered {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
         }
-
+    
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            overflow-x: auto; /* Added to handle overflow */
+            display: block; /* Make table block to enable scrolling */
         }
-
+    
         table, th, td {
             border: 1px solid #ccc;
         }
-
+    
         th, td {
             padding: 10px;
             text-align: left;
         }
-
+    
         th {
             background-color: #f8f8f8;
         }
-
+    
         img {
             max-width: 100px;
             height: auto;
             display: block;
         }
-
+    
         .load-more-container {
             text-align: center;
             margin-top: 20px;
             position: relative;
         }
-
+    
         .load-more-container button {
             padding: 10px 20px;
             font-size: 16px;
@@ -123,16 +134,16 @@
             color: white;
             cursor: pointer;
         }
-
+    
         .load-more-container button:hover {
             background-color: #0056b3;
         }
-
+    
         .load-more-container button:disabled {
             background-color: #cccccc;
             cursor: not-allowed;
         }
-
+    
         /* Modal styles */
         .modal {
             display: none;
@@ -146,8 +157,9 @@
             background-color: rgb(0,0,0);
             background-color: rgba(0,0,0,0.4);
             padding-top: 60px;
+            box-sizing: border-box;
         }
-
+    
         .modal-content {
             background-color: #fefefe;
             margin: 5% auto;
@@ -156,22 +168,23 @@
             width: 80%;
             max-width: 500px;
             border-radius: 8px;
+            box-sizing: border-box;
         }
-
+    
         .close {
             color: #aaa;
             float: right;
             font-size: 28px;
             font-weight: bold;
         }
-
+    
         .close:hover,
         .close:focus {
             color: black;
             text-decoration: none;
             cursor: pointer;
         }
-
+    
         .transcribe-loading {
             display: none;
             width: 20px;
@@ -181,12 +194,39 @@
             border-top: 4px solid #3498db;
             animation: spin 2s linear infinite;
         }
-
+    
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+    
+        @media (max-width: 600px) {
+            .input-container input,
+            .input-container button,
+            .slider-container input {
+                width: 90%;
+            }
+    
+            table, th, td {
+                font-size: 14px;
+                padding: 8px;
+            }
+    
+            th, td {
+                white-space: nowrap;
+            }
+    
+            .load-more-container button {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+    
+            .container {
+                padding: 10px; /* Adjust container padding for mobile */
+            }
+        }
     </style>
+    
 </head>
 <body>
     <div class="container">
