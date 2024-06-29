@@ -273,6 +273,8 @@
             <span class="close">&times;</span>
             <h2>Transcription</h2>
             <p id="transcriptionText"></p>
+            <h2>Summary</h2>
+            <p id="summaryText"></p>
         </div>
     </div>
 
@@ -286,12 +288,12 @@
         const loadingContainerBelow = document.getElementById('loading-container-below');
         let username = '';
         let playCountFilter = 10000;
-
+    
         function updatePlayCountValue(value) {
             playCountFilter = value;
             document.getElementById('play-count-value').innerText = value;
         }
-
+    
         function formatPlayCount(count) {
             if (count >= 1000000) {
                 return (count / 1000000).toFixed(2) + 'M';
@@ -303,7 +305,7 @@
                 return count.toString();
             }
         }
-
+    
         function showLoading(centered = false) {
             if (centered) {
                 loadingContainer.classList.add('centered');
@@ -312,17 +314,17 @@
                 loadingContainerBelow.style.display = 'block';
             }
         }
-
+    
         function hideLoading() {
             loadingContainer.style.display = 'none';
             loadingContainerBelow.style.display = 'none';
         }
-
+    
         function limitCaption(caption) {
             const words = caption.split(' ');
             return words.length > 10 ? words.slice(0, 10).join(' ') + '...' : caption;
         }
-
+    
         function fetchReels() {
             username = document.getElementById('username').value;
             if (username) {
@@ -332,8 +334,8 @@
                 loadReels();
             }
         }
-
-        function loadReels() {
+    
+        function loadReels(accumulatedReels = []) {
             loadMoreButton.disabled = true;
             let url = `/api/reels?username=${username}&play_count=${playCountFilter}`;
             if (nextPageId) {
@@ -345,35 +347,19 @@
                     console.log(data); // Debug statement
                     if (data.error) {
                         alert(data.error);
+                        hideLoading();
                         return;
                     }
-                    if (data.items.length > 0) {
-                        data.items.forEach(reel => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td><img src="${reel.thumbnail_url}" alt="thumbnail"></td>
-                                <td>${limitCaption(reel.caption)}</td>
-                                <td>${new Date(reel.timestamp * 1000).toLocaleDateString()}</td>
-                                <td>${formatPlayCount(reel.play_count)}</td>
-                                <td>${reel.comment_count}</td>
-                                <td>${reel.like_count}</td>
-                                <td>${reel.reshare_count}</td>
-                                <td>${reel.video_duration ? reel.video_duration.toFixed(2) + 's' : 'N/A'}</td>
-                                <td>
-                                    <button onclick="transcribeAudio(this, '${reel.original_sound_url}')">Transcribe</button>
-                                    <div class="transcribe-loading"></div>
-                                </td>
-                            `;
-                            reelsTableBody.appendChild(row);
-                        });
-                        reelsTable.style.display = '';
+                    accumulatedReels = accumulatedReels.concat(data.items);
+                    displayReels(data.items);  // Display the reels fetched in this call
+                    if (accumulatedReels.length < 6 && data.next_page_id) {
                         nextPageId = data.next_page_id;
-                        loadMoreContainer.style.display = nextPageId ? '' : 'none';
+                        loadReels(accumulatedReels);  // Fetch more reels if less than 6
                     } else {
-                        loadMoreContainer.style.display = 'none';
+                        nextPageId = data.next_page_id;
+                        hideLoading();
+                        loadMoreButton.disabled = false;
                     }
-                    hideLoading();
-                    loadMoreButton.disabled = false;
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -381,17 +367,40 @@
                     loadMoreButton.disabled = false;
                 });
         }
-
+    
+        function displayReels(reels) {
+            reels.forEach(reel => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><img src="${reel.thumbnail_url}" alt="thumbnail"></td>
+                    <td>${limitCaption(reel.caption)}</td>
+                    <td>${new Date(reel.timestamp * 1000).toLocaleDateString()}</td>
+                    <td>${formatPlayCount(reel.play_count)}</td>
+                    <td>${reel.comment_count}</td>
+                    <td>${reel.like_count}</td>
+                    <td>${reel.reshare_count}</td>
+                    <td>${reel.video_duration ? reel.video_duration.toFixed(2) + 's' : 'N/A'}</td>
+                    <td>
+                        <button onclick="transcribeAudio(this, '${reel.original_sound_url}')">Transcribe</button>
+                        <div class="transcribe-loading"></div>
+                    </td>
+                `;
+                reelsTableBody.appendChild(row);
+            });
+            reelsTable.style.display = '';
+            loadMoreContainer.style.display = nextPageId ? '' : 'none';
+        }
+    
         function loadMoreReels() {
             showLoading(false);
             loadReels();
         }
-
+    
         function transcribeAudio(button, audioUrl) {
             const loadingIndicator = button.nextElementSibling;
             button.disabled = true;
             loadingIndicator.style.display = 'inline-block';
-
+    
             fetch('/api/transcribe', {
                 method: 'POST',
                 headers: {
@@ -407,6 +416,7 @@
                     alert('Error: ' + data.error);
                 } else {
                     openModal(data.transcription);
+                    summarizeText(data.transcription);
                 }
             })
             .catch(error => {
@@ -415,35 +425,68 @@
                 loadingIndicator.style.display = 'none';
             });
         }
-
+    
+        async function summarizeText(text) {
+            const summaryTextElement = document.getElementById('summaryText');
+            summaryTextElement.innerText = "";
+    
+            try {
+                const response = await fetch('/api/summarize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text }),
+                });
+    
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+    
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let done = false;
+    
+                while (!done) {
+                    const { value, done: doneReading } = await reader.read();
+                    done = doneReading;
+                    const chunk = decoder.decode(value);
+                    summaryTextElement.innerText += chunk;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+    
         function openModal(transcription) {
             document.getElementById('transcriptionText').innerText = transcription;
+            document.getElementById('summaryText').innerText = ""; // Clear previous summary
             const modal = document.getElementById('transcriptionModal');
             modal.style.display = 'block';
         }
-
+    
         function closeModal() {
             const modal = document.getElementById('transcriptionModal');
             modal.style.display = 'none';
         }
-
+    
         // Get the modal
         const modal = document.getElementById('transcriptionModal');
-
+    
         // Get the <span> element that closes the modal
         const span = document.getElementsByClassName('close')[0];
-
+    
         // When the user clicks on <span> (x), close the modal
         span.onclick = function() {
             closeModal();
         }
-
+    
         // When the user clicks anywhere outside of the modal, close it
         window.onclick = function(event) {
             if (event.target == modal) {
                 closeModal();
             }
         }
-    </script>
+    </script>    
 </body>
 </html>

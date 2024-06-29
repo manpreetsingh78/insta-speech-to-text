@@ -2,14 +2,17 @@ from flask import Flask, jsonify, request, render_template, g, send_from_directo
 import sqlite3
 import os
 import requests
-from config import API_V1_URL, API_V1_URL_2, ACCESS_TOKEN, API_V2_URL, BALANCE_API_URL, USERNAME_API_URL
+from config import API_V1_URL, API_V1_URL_2, ACCESS_TOKEN, API_V2_URL, BALANCE_API_URL, USERNAME_API_URL,API_V2_CLIPS_URL,API_V2_CLIPS_URL_2,OPEN_AI_KEYS
 from urllib.parse import urlparse, unquote
 from urllib.parse import urlparse
 import hashlib
 from pydub import AudioSegment
 import whisper
 import time
+from openai import OpenAI
 import threading
+
+
 
 
 app = Flask(__name__, template_folder='templates', static_url_path='/static')
@@ -18,6 +21,7 @@ model = whisper.load_model('tiny')
 
 IMAGE_FOLDER = os.path.join(app.root_path, 'static', 'thumbnails')
 AUDIO_FOLDER = os.path.join(app.root_path, 'static', 'audio')
+client = OpenAI(api_key=OPEN_AI_KEYS)
 
 headers = {
     'accept': 'application/json',
@@ -66,6 +70,36 @@ def convert_to_wav(audio_path):
     audio.export(wav_path, format="wav")
     return wav_path
 
+
+@app.route('/api/summarize', methods=['POST'])
+def summarize_text():
+    data = request.get_json()
+    text_to_summarize = data.get('text')
+    
+    if not text_to_summarize:
+        return jsonify({'error': 'No text provided for summarization'}), 400
+
+    prompt = f"Summarize the following text in 1-2 lines:\n\n{text_to_summarize}"
+    
+    # Make the request to OpenAI API
+    stream = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        stream=True,
+    )
+
+    summary = ""
+    def generate_summary():
+        nonlocal summary
+        for chunk in stream:
+            chunk_text = chunk.choices[0].delta.content or ""
+            summary += chunk_text
+            yield chunk_text  # Remove the 'data:' prefix
+
+    return app.response_class(generate_summary(), mimetype='text/event-stream')
+
+
+
 @app.route('/api/transcribe', methods=['POST'])
 def transcribe_audio():
     data = request.get_json()
@@ -93,6 +127,7 @@ def transcribe_audio():
         # Convert audio to WAV format
         wav_path = convert_to_wav(audio_path)
         result = model.transcribe(wav_path)
+
 
         return jsonify({'transcription': result["text"]})
     except Exception as e:
@@ -154,7 +189,6 @@ def by_v1_media(user_id, play_count_filter, end_cursor=None):
         return response
     else:
         return None
-
 
 
 def by_v2_media(user_id, page_id, play_count_filter):
@@ -232,22 +266,111 @@ def by_v2_media(user_id, page_id, play_count_filter):
     else:
         return None 
 
+
+def by_v2_clips(user_id, page_id, play_count_filter):
+    api_v2_clips_url = API_V2_CLIPS_URL.format(user_id)
+    if page_id:
+        api_v2_clips_url = API_V2_CLIPS_URL_2.format(user_id, page_id)
+    
+    try:
+        print("Calling URL:- ", api_v2_clips_url)
+        t7 = time.time()
+        r = requests.get(url=api_v2_clips_url, headers=headers)
+        t8 = time.time()
+        print("API CALL TIME:- ",t8-t7)
+    except requests.RequestException as e:
+        print("Request failed:", e)
+        return None
+
+    print("by_v2_clips:- ", r.status_code)
+    if r.status_code == 200:
+        try:
+            res_json = r.json()
+        except ValueError as e:
+            print("Failed to parse JSON:", e)
+            return None
+
+        next_page_id = res_json.get('next_page_id')
+        num_results = len(res_json.get('response', {}).get('items'))
+        items = res_json.get('response', {}).get('items', [])
+
+        media_data = []
+        download_threads = []
+
+        def process_item(item):
+            if item is None:
+                return
+            item = item['media']
+            try:
+                play_count = item.get('play_count', None)
+                if play_count is not None and play_count >= play_count_filter:
+                    media_info = {
+                        'timestamp': item.get('taken_at', None),
+                        'media_type': item.get('media_type', None),
+                        'caption': item.get('caption', {}).get('text', None) if item.get('caption') else None,
+                        'play_count': play_count,
+                        'product_type': item.get('product_type', None),
+                        'comment_count': item.get('comment_count', None),
+                        'like_count': item.get('like_count', None),
+                        'video_subtitles_uri': item.get('video_subtitles_uri', None),
+                        'video_subtitles_locale': item.get('video_subtitles_locale', None),
+                        'video_duration': item.get('video_duration', None),
+                        'has_audio': item.get('has_audio', None),
+                        'original_sound_url': item.get('clips_metadata', {}).get('original_sound_info', {}).get('progressive_download_url', None) if item.get('clips_metadata') else None,
+                        'reshare_count': item.get('reshare_count', None),
+                        'video_url': item.get('video_url', None),
+                        'thumbnail_url': download_image(item.get('thumbnail_url', None))
+                    }
+                    media_data.append(media_info)
+            except Exception as e:
+                print("Error processing item:", e)
+
+        t5 = time.time()
+        for item in items:
+            thread = threading.Thread(target=process_item, args=(item,))
+            download_threads.append(thread)
+            thread.start()
+
+        for thread in download_threads:
+            thread.join()
+        t6 = time.time()
+        print("For Loop Time:- ", t6 - t5)
+
+        response = {
+            'next_page_id': next_page_id,
+            'num_results': num_results,
+            'items': media_data
+        }
+
+        return response
+    else:
+        return None 
+
+
 def fetch_reels(pk_id, page, play_count_filter):
+    if page == 1:
+        end_cursor = None
+    else:
+        end_cursor = page
+    # t9 = time.time()
+    # api_res_by_v2_clips = by_v2_clips(pk_id,end_cursor,play_count_filter)
+    # print("by_v2_clips Time:- ",time.time() - t9)
+    # if api_res_by_v2_clips:
+    #     return api_res_by_v2_clips
+    # print("api_res_by_v2_clips Failed using by_v2_media Now")
     t3 = time.time()
     api_v2_response = by_v2_media(pk_id,page,play_count_filter)
     t4 = time.time()
     print("by_v2_media:- ",t4-t3)
+    if api_v2_response:
+        return api_v2_response
     # print("api_v2_response", api_v2_response)
-    if not api_v2_response:
-        print("V2 Failed using V1 Now")
-        if page == 1:
-            end_cursor = None
-        else:
-            end_cursor = page
-        res = by_v1_media(pk_id, play_count_filter, end_cursor)
-        # print("by_v1_media", res)
+    print("api_v2_response Failed using by_v1_media Now")
+    res = by_v1_media(pk_id, play_count_filter, end_cursor)
+    # print("by_v1_media", res)
+    if res:
         return res
-    return api_v2_response
+    return {'error': 'Something went Wrong'}
 
 def get_id_by_username(username):
     db = get_db()
